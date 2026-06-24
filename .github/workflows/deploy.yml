@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
 
+concurrency:
+  group: deploy-main
+  cancel-in-progress: true
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
@@ -19,7 +23,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
+          cache: "npm"
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
 
       - name: Install client deps
         run: npm ci
@@ -41,18 +50,25 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: ap-south-1
+          aws-region: us-east-1
 
       - name: Terraform apply
         run: |
           terraform init
-          terraform apply -auto-approve -var="db_password=${{ secrets.DB_PASSWORD }}"
+          terraform apply -auto-approve \
+            -var="aws_region=us-east-1" \
+            -var="environment=prod" \
+            -var="db_password=${{ secrets.DB_PASSWORD }}" \
+            -var="ec2_key_name=${{ secrets.EC2_KEY_NAME }}"
         working-directory: infra/terraform
 
       - name: Resolve database URL from Terraform
         id: tf
         run: |
           echo "database_url=$(terraform output -raw database_url)" >> "$GITHUB_OUTPUT"
+          echo "api_host=$(terraform output -raw api_host)" >> "$GITHUB_OUTPUT"
+          echo "frontend_bucket=$(terraform output -raw frontend_bucket)" >> "$GITHUB_OUTPUT"
+          echo "cloudfront_distribution_id=$(terraform output -raw cloudfront_distribution_id)" >> "$GITHUB_OUTPUT"
         working-directory: infra/terraform
 
       - name: Run DB migrations
@@ -64,7 +80,44 @@ jobs:
           ADMIN_BOOTSTRAP_EMAIL: ${{ secrets.ADMIN_BOOTSTRAP_EMAIL }}
           ADMIN_BOOTSTRAP_PASSWORD: ${{ secrets.ADMIN_BOOTSTRAP_PASSWORD }}
 
-      - name: Run deploy script
-        run: bash infra/deploy.sh prod
+      - name: Upload frontend to S3
+        run: |
+          aws s3 sync client/dist "s3://${{ steps.tf.outputs.frontend_bucket }}" --delete
+          aws cloudfront create-invalidation \
+            --distribution-id "${{ steps.tf.outputs.cloudfront_distribution_id }}" \
+            --paths "/*"
+
+      - name: Prepare API artifact
+        run: |
+          cd server
+          tar -czf /tmp/server-dist.tar.gz dist package.json package-lock.json
+
+      - name: Load SSH key
+        if: ${{ secrets.EC2_SSH_PRIVATE_KEY != '' }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "${{ steps.tf.outputs.api_host }}" >> ~/.ssh/known_hosts
+
+      - name: Deploy API to EC2
+        if: ${{ secrets.EC2_SSH_PRIVATE_KEY != '' }}
+        run: |
+          scp /tmp/server-dist.tar.gz ec2-user@${{ steps.tf.outputs.api_host }}:/tmp/server-dist.tar.gz
+          ssh ec2-user@${{ steps.tf.outputs.api_host }} <<'EOF'
+            set -e
+            mkdir -p ~/app
+            tar -xzf /tmp/server-dist.tar.gz -C ~/app
+            cd ~/app
+            npm ci --omit=dev
+            npm install -g pm2
+            pm2 restart market-price-tracker || pm2 start dist/index.js --name market-price-tracker
+            pm2 save
+          EOF
+
+      - name: Deployment summary
+        run: |
+          echo "Frontend deployed to CloudFront."
+          echo "API host: ${{ steps.tf.outputs.api_host }}"
         env:
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}

@@ -10,6 +10,14 @@ terraform {
 
 provider "aws" {
   region = var.aws_region
+
+  default_tags {
+    tags = {
+      Project     = var.project_name
+      Environment = var.environment
+      ManagedBy   = "terraform"
+    }
+  }
 }
 
 resource "aws_s3_bucket" "frontend" {
@@ -59,22 +67,83 @@ resource "aws_cloudfront_distribution" "frontend_cdn" {
 }
 
 resource "aws_db_instance" "postgres" {
-  allocated_storage      = 20
-  engine                 = "postgres"
-  engine_version         = "16.3"
-  instance_class         = "db.t3.micro"
-  db_name                = "market_price_tracker"
-  username               = var.db_username
-  password               = var.db_password
-  publicly_accessible    = true
-  skip_final_snapshot    = true
-  backup_retention_period = 7
+  allocated_storage       = 20
+  engine                  = "postgres"
+  engine_version          = "16.3"
+  instance_class          = var.db_instance_class
+  db_name                 = "market_price_tracker"
+  username                = var.db_username
+  password                = var.db_password
+  publicly_accessible     = true
+  skip_final_snapshot     = true
+  backup_retention_period = 1
+  deletion_protection     = false
+
+  vpc_security_group_ids = [aws_security_group.db_sg.id]
 }
 
 resource "aws_instance" "api" {
-  ami           = var.api_ami
-  instance_type = "t3.micro"
+  ami                    = var.api_ami
+  instance_type          = var.api_instance_type
+  key_name               = var.ec2_key_name != "" ? var.ec2_key_name : null
+  vpc_security_group_ids = [aws_security_group.api_sg.id]
   tags = {
     Name = "${var.project_name}-${var.environment}-api"
+  }
+}
+
+resource "aws_security_group" "api_sg" {
+  name        = "${var.project_name}-${var.environment}-api-sg"
+  description = "API security group"
+
+  ingress {
+    description = "HTTP API"
+    from_port   = 4000
+    to_port     = 4000
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    description = "SSH"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = [var.allowed_ssh_cidr]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "aws_security_group" "db_sg" {
+  name        = "${var.project_name}-${var.environment}-db-sg"
+  description = "RDS security group"
+
+  ingress {
+    description     = "Postgres from API"
+    from_port       = 5432
+    to_port         = 5432
+    protocol        = "tcp"
+    security_groups = [aws_security_group.api_sg.id]
+  }
+
+  ingress {
+    description = "Postgres from current public IP (temporary)"
+    from_port   = 5432
+    to_port     = 5432
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
   }
 }

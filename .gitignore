@@ -6,3 +6,7 @@ server/dist/
 .env
 .env.*
 !.env.example
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan

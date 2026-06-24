@@ -125,6 +125,22 @@ The script:
 4. Builds/syncs frontend to S3 + CloudFront invalidation
 5. Builds/deploys API bundle to EC2
 
+### Free-tier guardrails and IAM (CLI)
+
+1. Create budget + billing alarms (recommended first):
+
+```bash
+ALERT_EMAIL=you@example.com bash infra/scripts/setup-cost-guardrails.sh
+```
+
+2. Create GitHub OIDC deploy role for this repo:
+
+```bash
+bash infra/scripts/setup-github-oidc-role.sh sai045 agri-market-price-tracker
+```
+
+This prints the role ARN to store as GitHub secret `AWS_DEPLOY_ROLE_ARN`.
+
 ### Terraform-only quick start
 
 ```bash
@@ -143,6 +159,12 @@ Required secrets:
 - `JWT_SECRET`
 - `ADMIN_BOOTSTRAP_EMAIL`
 - `ADMIN_BOOTSTRAP_PASSWORD`
+- `EC2_SSH_PRIVATE_KEY` (required for API deployment step)
+- `EC2_KEY_NAME` (EC2 key pair name attached to API instance)
+
+Recommended:
+- Keep `aws_region` as `us-east-1` for billing metrics + simplest setup.
+- Use `t3.micro` for EC2 and `db.t3.micro` for RDS (already defaulted).
 
 ## Notes for Data Entry
 
