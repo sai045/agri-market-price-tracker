@@ -25,8 +25,8 @@ variable "db_password" {
 
 variable "api_ami" {
   type        = string
-  description = "Ubuntu AMI for API EC2 instance"
-  default     = "ami-0f58b397bc5c1f2e8"
+  description = "Optional EC2 AMI override for API instance. Leave empty to use latest Amazon Linux 2023 AMI from SSM."
+  default     = ""
 }
 
 variable "api_instance_type" {

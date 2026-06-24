@@ -21,6 +21,10 @@ provider "aws" {
   }
 }
 
+data "aws_ssm_parameter" "api_ami" {
+  name = "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64"
+}
+
 resource "aws_s3_bucket" "frontend" {
   bucket = "${var.project_name}-${var.environment}-frontend"
 }
@@ -84,7 +88,7 @@ resource "aws_db_instance" "postgres" {
 }
 
 resource "aws_instance" "api" {
-  ami                    = var.api_ami
+  ami                    = var.api_ami != "" ? var.api_ami : data.aws_ssm_parameter.api_ami.value
   instance_type          = var.api_instance_type
   key_name               = var.ec2_key_name != "" ? var.ec2_key_name : null
   vpc_security_group_ids = [aws_security_group.api_sg.id]
