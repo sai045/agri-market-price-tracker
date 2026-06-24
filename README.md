@@ -161,6 +161,9 @@ Required secrets:
 - `ADMIN_BOOTSTRAP_PASSWORD`
 - `EC2_SSH_PRIVATE_KEY` (required for API deployment step)
 - `EC2_KEY_NAME` (EC2 key pair name attached to API instance)
+- `TF_STATE_BUCKET` (remote Terraform state S3 bucket)
+- `TF_STATE_KEY` (e.g. `prod/terraform.tfstate`)
+- `TF_LOCK_TABLE` (DynamoDB lock table for Terraform)
 
 Recommended:
 - Keep `aws_region` as `us-east-1` for billing metrics + simplest setup.
