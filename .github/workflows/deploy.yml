@@ -121,7 +121,7 @@ jobs:
             cp /tmp/server-app.env ~/app/.env
             cd ~/app
             npm ci --omit=dev
-            npm install -g pm2
+            sudo npm install -g pm2
             pm2 restart market-price-tracker || pm2 start dist/index.js --name market-price-tracker
             pm2 save
           EOF
