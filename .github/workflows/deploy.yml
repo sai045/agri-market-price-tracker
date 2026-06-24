@@ -30,21 +30,14 @@ jobs:
         with:
           terraform_version: 1.9.8
 
-      - name: Install client deps
+      - name: Install dependencies (workspace root)
         run: npm ci
-        working-directory: client
-
-      - name: Install server deps
-        run: npm ci
-        working-directory: server
 
       - name: Build client
-        run: npm run build
-        working-directory: client
+        run: npm run build --workspace client
 
       - name: Build server
-        run: npm run build
-        working-directory: server
+        run: npm run build --workspace server
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
@@ -72,8 +65,7 @@ jobs:
         working-directory: infra/terraform
 
       - name: Run DB migrations
-        run: npm run db:migrate
-        working-directory: server
+        run: npm run db:migrate --workspace server
         env:
           DATABASE_URL: ${{ steps.tf.outputs.database_url }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
