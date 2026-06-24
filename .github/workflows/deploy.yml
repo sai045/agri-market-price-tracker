@@ -93,7 +93,6 @@ jobs:
           tar -czf /tmp/server-dist.tar.gz dist package.json package-lock.json
 
       - name: Load SSH key
-        if: ${{ secrets.EC2_SSH_PRIVATE_KEY != '' }}
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
@@ -101,7 +100,6 @@ jobs:
           ssh-keyscan -H "${{ steps.tf.outputs.api_host }}" >> ~/.ssh/known_hosts
 
       - name: Deploy API to EC2
-        if: ${{ secrets.EC2_SSH_PRIVATE_KEY != '' }}
         run: |
           scp /tmp/server-dist.tar.gz ec2-user@${{ steps.tf.outputs.api_host }}:/tmp/server-dist.tar.gz
           ssh ec2-user@${{ steps.tf.outputs.api_host }} <<'EOF'
