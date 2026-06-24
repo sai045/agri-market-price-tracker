@@ -62,7 +62,7 @@ jobs:
       - name: Resolve database URL from Terraform
         id: tf
         run: |
-          echo "database_url=$(terraform output -raw database_url)?sslmode=require" >> "$GITHUB_OUTPUT"
+          echo "database_url=$(terraform output -raw database_url)?sslmode=require&uselibpqcompat=true" >> "$GITHUB_OUTPUT"
           echo "api_host=$(terraform output -raw api_host)" >> "$GITHUB_OUTPUT"
           echo "frontend_bucket=$(terraform output -raw frontend_bucket)" >> "$GITHUB_OUTPUT"
           echo "cloudfront_distribution_id=$(terraform output -raw cloudfront_distribution_id)" >> "$GITHUB_OUTPUT"
@@ -73,6 +73,7 @@ jobs:
         env:
           DATABASE_URL: ${{ steps.tf.outputs.database_url }}
           PGSSLMODE: require
+          PGSSLREJECTUNAUTHORIZED: "false"
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           ADMIN_BOOTSTRAP_EMAIL: ${{ secrets.ADMIN_BOOTSTRAP_EMAIL }}
           ADMIN_BOOTSTRAP_PASSWORD: ${{ secrets.ADMIN_BOOTSTRAP_PASSWORD }}
@@ -92,6 +93,8 @@ jobs:
           PORT=4000
           CLIENT_URL=http://localhost:5173
           DATABASE_URL=${{ steps.tf.outputs.database_url }}
+          PGSSLMODE=require
+          PGSSLREJECTUNAUTHORIZED=false
           JWT_SECRET=${{ secrets.JWT_SECRET }}
           ADMIN_BOOTSTRAP_EMAIL=${{ secrets.ADMIN_BOOTSTRAP_EMAIL }}
           ADMIN_BOOTSTRAP_PASSWORD=${{ secrets.ADMIN_BOOTSTRAP_PASSWORD }}
