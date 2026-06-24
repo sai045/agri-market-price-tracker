@@ -113,6 +113,9 @@ jobs:
           scp /tmp/server-app.env ec2-user@${{ steps.tf.outputs.api_host }}:/tmp/server-app.env
           ssh ec2-user@${{ steps.tf.outputs.api_host }} <<'EOF'
             set -e
+            if ! command -v npm >/dev/null 2>&1; then
+              sudo dnf -y install nodejs
+            fi
             mkdir -p ~/app
             tar -xzf /tmp/server-dist.tar.gz -C ~/app
             cp /tmp/server-app.env ~/app/.env
