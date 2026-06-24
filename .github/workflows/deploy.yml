@@ -62,7 +62,7 @@ jobs:
       - name: Resolve database URL from Terraform
         id: tf
         run: |
-          echo "database_url=$(terraform output -raw database_url)" >> "$GITHUB_OUTPUT"
+          echo "database_url=$(terraform output -raw database_url)?sslmode=require" >> "$GITHUB_OUTPUT"
           echo "api_host=$(terraform output -raw api_host)" >> "$GITHUB_OUTPUT"
           echo "frontend_bucket=$(terraform output -raw frontend_bucket)" >> "$GITHUB_OUTPUT"
           echo "cloudfront_distribution_id=$(terraform output -raw cloudfront_distribution_id)" >> "$GITHUB_OUTPUT"
@@ -72,6 +72,7 @@ jobs:
         run: npm run db:migrate --workspace server
         env:
           DATABASE_URL: ${{ steps.tf.outputs.database_url }}
+          PGSSLMODE: require
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           ADMIN_BOOTSTRAP_EMAIL: ${{ secrets.ADMIN_BOOTSTRAP_EMAIL }}
           ADMIN_BOOTSTRAP_PASSWORD: ${{ secrets.ADMIN_BOOTSTRAP_PASSWORD }}
@@ -87,6 +88,14 @@ jobs:
         run: |
           cd server
           tar -czf /tmp/server-dist.tar.gz dist package.json package-lock.json
+          cat <<EOF >/tmp/server-app.env
+          PORT=4000
+          CLIENT_URL=http://localhost:5173
+          DATABASE_URL=${{ steps.tf.outputs.database_url }}
+          JWT_SECRET=${{ secrets.JWT_SECRET }}
+          ADMIN_BOOTSTRAP_EMAIL=${{ secrets.ADMIN_BOOTSTRAP_EMAIL }}
+          ADMIN_BOOTSTRAP_PASSWORD=${{ secrets.ADMIN_BOOTSTRAP_PASSWORD }}
+          EOF
 
       - name: Load SSH key
         run: |
@@ -98,10 +107,12 @@ jobs:
       - name: Deploy API to EC2
         run: |
           scp /tmp/server-dist.tar.gz ec2-user@${{ steps.tf.outputs.api_host }}:/tmp/server-dist.tar.gz
+          scp /tmp/server-app.env ec2-user@${{ steps.tf.outputs.api_host }}:/tmp/server-app.env
           ssh ec2-user@${{ steps.tf.outputs.api_host }} <<'EOF'
             set -e
             mkdir -p ~/app
             tar -xzf /tmp/server-dist.tar.gz -C ~/app
+            cp /tmp/server-app.env ~/app/.env
             cd ~/app
             npm ci --omit=dev
             npm install -g pm2
