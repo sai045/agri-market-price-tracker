@@ -1,0 +1,70 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install client deps
+        run: npm ci
+        working-directory: client
+
+      - name: Install server deps
+        run: npm ci
+        working-directory: server
+
+      - name: Build client
+        run: npm run build
+        working-directory: client
+
+      - name: Build server
+        run: npm run build
+        working-directory: server
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ap-south-1
+
+      - name: Terraform apply
+        run: |
+          terraform init
+          terraform apply -auto-approve -var="db_password=${{ secrets.DB_PASSWORD }}"
+        working-directory: infra/terraform
+
+      - name: Resolve database URL from Terraform
+        id: tf
+        run: |
+          echo "database_url=$(terraform output -raw database_url)" >> "$GITHUB_OUTPUT"
+        working-directory: infra/terraform
+
+      - name: Run DB migrations
+        run: npm run db:migrate
+        working-directory: server
+        env:
+          DATABASE_URL: ${{ steps.tf.outputs.database_url }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          ADMIN_BOOTSTRAP_EMAIL: ${{ secrets.ADMIN_BOOTSTRAP_EMAIL }}
+          ADMIN_BOOTSTRAP_PASSWORD: ${{ secrets.ADMIN_BOOTSTRAP_PASSWORD }}
+
+      - name: Run deploy script
+        run: bash infra/deploy.sh prod
+        env:
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
