@@ -31,10 +31,18 @@ resource "aws_s3_bucket" "frontend" {
 
 resource "aws_s3_bucket_public_access_block" "frontend" {
   bucket                  = aws_s3_bucket.frontend.id
-  block_public_acls       = false
-  block_public_policy     = false
-  ignore_public_acls      = false
-  restrict_public_buckets = false
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_cloudfront_origin_access_control" "frontend_oac" {
+  name                              = "${var.project_name}-${var.environment}-frontend-oac"
+  description                       = "OAC for frontend S3 bucket"
+  origin_access_control_origin_type = "s3"
+  signing_behavior                  = "always"
+  signing_protocol                  = "sigv4"
 }
 
 resource "aws_cloudfront_distribution" "frontend_cdn" {
@@ -44,6 +52,18 @@ resource "aws_cloudfront_distribution" "frontend_cdn" {
   origin {
     domain_name = aws_s3_bucket.frontend.bucket_regional_domain_name
     origin_id   = "frontendS3"
+    origin_access_control_id = aws_cloudfront_origin_access_control.frontend_oac.id
+  }
+
+  origin {
+    domain_name = aws_instance.api.public_dns
+    origin_id   = "apiOrigin"
+    custom_origin_config {
+      http_port              = 4000
+      https_port             = 443
+      origin_protocol_policy = "http-only"
+      origin_ssl_protocols   = ["TLSv1.2"]
+    }
   }
 
   default_cache_behavior {
@@ -60,6 +80,25 @@ resource "aws_cloudfront_distribution" "frontend_cdn" {
     }
   }
 
+  ordered_cache_behavior {
+    path_pattern           = "/api/*"
+    target_origin_id       = "apiOrigin"
+    viewer_protocol_policy = "redirect-to-https"
+    allowed_methods        = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
+    cached_methods         = ["GET", "HEAD", "OPTIONS"]
+    min_ttl                = 0
+    default_ttl            = 0
+    max_ttl                = 0
+
+    forwarded_values {
+      query_string = true
+      headers      = ["*"]
+      cookies {
+        forward = "all"
+      }
+    }
+  }
+
   restrictions {
     geo_restriction {
       restriction_type = "none"
@@ -69,6 +108,29 @@ resource "aws_cloudfront_distribution" "frontend_cdn" {
   viewer_certificate {
     cloudfront_default_certificate = true
   }
+}
+
+data "aws_iam_policy_document" "frontend_bucket_policy" {
+  statement {
+    sid    = "AllowCloudFrontReadObjects"
+    effect = "Allow"
+    principals {
+      type        = "Service"
+      identifiers = ["cloudfront.amazonaws.com"]
+    }
+    actions = ["s3:GetObject"]
+    resources = ["${aws_s3_bucket.frontend.arn}/*"]
+    condition {
+      test     = "StringEquals"
+      variable = "AWS:SourceArn"
+      values   = [aws_cloudfront_distribution.frontend_cdn.arn]
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "frontend" {
+  bucket = aws_s3_bucket.frontend.id
+  policy = data.aws_iam_policy_document.frontend_bucket_policy.json
 }
 
 resource "aws_db_instance" "postgres" {
